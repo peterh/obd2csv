@@ -220,8 +220,9 @@ sub bytes {
 sub modeinit {
     my @list;
     my $mode = shift;
+    my $tail = shift // '';
     my $offset = shift // 0;
-    my $rv = cmd(sprintf('%02X%02X', $mode, $offset));
+    my $rv = cmd(sprintf("%02X%02X$tail", $mode, $offset));
     my $bits = bytes($rv, 2);
     if (length($bits) != 4) {
         die("Unexpected error during mode $mode init: $rv\n");
@@ -231,7 +232,7 @@ sub modeinit {
         push @list, ($i + $offset) if ($supported[$i-1]);
     }
 
-    push @list, modeinit($mode, $offset + 0x20) if ($supported[0x20 - 1]);
+    push @list, modeinit($mode, $tail, $offset + 0x20) if ($supported[0x20 - 1]);
 
     return @list;
 }
@@ -250,10 +251,10 @@ my %mode1 = map { $_ => 1 } modeinit(1);
 say "01 supported: ";
 say join(', ', map { sprintf('%02X', $_); } sort { $a <=> $b } keys %mode1);
 
-my %mode2 = map { $_ => 1 } modeinit(2);
+my %mode2 = map { $_ => 1 } modeinit(2, '00');
 
 say "02 supported: ";
-say join(', ', map { sprintf('%02X', $_); } sort keys %mode2);
+say join(', ', map { sprintf('%02X', $_); } sort { $a <=> $b } keys %mode2);
 
 my $dtcs = dtccount(bytes(cmd('0101'), 2));
 say "DTCs: $dtcs";
@@ -263,19 +264,29 @@ if ($dtcs) {
     for my $i (1..$dtcs) {
         say dtcformat($dtcs[$i-1]);
     }
+    say 'Next DTCs:';
+    $list = bytes(cmd('07'), 1);
+    @dtcs = unpack('n*', $list);
+    for my $dtc (@dtcs) {
+        say dtcformat($dtc) if $dtc;
+    }
+
     say '';
-    my $ff = cmd('0102');
+    my $ff = cmd('020200');
     my $dtc = bytes($ff, 1);
     die "Invalid Freeze Frame Number $ff\n" if (length($dtc) != 2);
 
     say 'Freeze Frame: '.dtcformat(unpack('n', $dtc));
-    for my $i (sort keys %mode1) {
+    for my $i (sort keys %mode2) {
         next if ($i == 1);   # PID 1 not valid in mode 2
-        next unless defined $pid[$i];
+        if (!defined $pid[$i]) {
+            say "Unknown PID $i";
+            next;
+        }
         print $pid[$i]->{name};
         print ' ('.$pid[$i]->{units}.')' if (defined $pid[$i]->{units});
         print ': ';
-        my $cmd = cmd(sprintf('02%02X',$i));
+        my $cmd = cmd(sprintf('02%02X00',$i));
         my $bytes = bytes($cmd, 2);
         if (length($bytes) != $pid[$i]->{length}) {
             say "Error: $cmd";
