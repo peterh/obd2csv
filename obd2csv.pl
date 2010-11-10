@@ -4,11 +4,24 @@ use 5.10.0;
 use warnings;
 use strict;
 
+use Getopt::Long;
+use Time::HiRes qw( time usleep );
+use Device::SerialPort;
+
 my $port = '/dev/ttyACM0';
 my $baud = 9600;
+my $dtc = '';
+my $snap = '';
+my @watch = ();
 
-use Time::HiRes qw( usleep );
-use Device::SerialPort;
+GetOptions('baud=i' => \$baud
+         , 'dtc'    => \$dtc
+         , 'port=s' => \$port
+         , 'snap'   => \$snap
+         , 'watch=s' => \@watch
+          );
+@watch = split(/,/,join(',',@watch));
+
 my $obd = new Device::SerialPort($port, 1) or die "Cannot open $port\n";
 $obd->baudrate($baud);
 $obd->parity("none");
@@ -16,6 +29,9 @@ $obd->databits(8);
 $obd->stopbits(1);
 $obd->handshake('rts');
 $obd->write_settings or die "Cannot configure $port\n";
+
+# Drain input buffer
+$obd->read(1024);
 
 sub dtccount {
     my ($a, $b, $c, $d) = unpack ('C4', shift);
@@ -198,6 +214,13 @@ sub cmd {
     }
 }
 
+sub quote {
+    my $item = shift;
+    $item =~ s/"/""/g;
+    $item = '"'.$item.'"';
+    return $item;
+}
+
 sub bytes {
     my $in = shift;
     my $trim = shift // 0;
@@ -237,61 +260,119 @@ sub modeinit {
     return @list;
 }
 
+sub getval {
+    my $i = shift;
+    my $format = shift;
+
+    my $value;
+    my $cmd = cmd(sprintf($format,$i));
+    my $bytes = bytes($cmd, 2);
+    if (length($bytes) != $pid[$i]->{length}) {
+        $value = "Error: $cmd";
+    } else {
+        $value = $pid[$i]->{format}($bytes);
+    }
+    return $value;
+}
+
+sub lineitem {
+    my $i = shift;
+    my $format = shift;
+    if (!defined $pid[$i]) {
+        say quote('Unknown PID '.$i);
+        return;
+    }
+    my $type = $pid[$i]->{name};
+    $type .= ' ('.$pid[$i]->{units}.')' if (defined $pid[$i]->{units});
+
+    say quote($type).','.quote(getval($i, $format));
+}
+
 cmd('ATZ');   # Reset
 cmd('AT E0');  # Echo off
 
 my $ver = cmd('ATI');
 chomp($ver);
-say "Interface version: $ver";
+say '"Interface version",'. quote($ver);
 
-say "VIN\n", cmd('0902');
+say '"VIN",'. quote(bytes(cmd('0902'),3));
 
-my %mode1 = map { $_ => 1 } modeinit(1);
-
-say "01 supported: ";
-say join(', ', map { sprintf('%02X', $_); } sort { $a <=> $b } keys %mode1);
-
-my %mode2 = map { $_ => 1 } modeinit(2, '00');
-
-say "02 supported: ";
-say join(', ', map { sprintf('%02X', $_); } sort { $a <=> $b } keys %mode2);
-
-my $dtcs = dtccount(bytes(cmd('0101'), 2));
-say "DTCs: $dtcs";
-if ($dtcs) {
-    my $list = bytes(cmd('03'), 1);
-    my @dtcs = unpack('n*', $list);
-    for my $i (1..$dtcs) {
-        say dtcformat($dtcs[$i-1]);
-    }
-    say 'Next DTCs:';
-    $list = bytes(cmd('07'), 1);
-    @dtcs = unpack('n*', $list);
-    for my $dtc (@dtcs) {
-        say dtcformat($dtc) if $dtc;
-    }
-
-    say '';
-    my $ff = cmd('020200');
-    my $dtc = bytes($ff, 1);
-    die "Invalid Freeze Frame Number $ff\n" if (length($dtc) != 2);
-
-    say 'Freeze Frame: '.dtcformat(unpack('n', $dtc));
-    for my $i (sort keys %mode2) {
-        next if ($i == 1);   # PID 1 not valid in mode 2
-        if (!defined $pid[$i]) {
-            say "Unknown PID $i";
-            next;
+if ($dtc) {
+    my %mode2 = map { $_ => 1 } modeinit(2, '00');
+    
+    my $dtcs = dtccount(bytes(cmd('0101'), 2));
+    say '"Number of DTCs",'.quote($dtcs);
+    if ($dtcs) {
+        my $list = bytes(cmd('03'), 1);
+        my @dtcs = unpack('n*', $list);
+        my @fmt;
+        for my $i (1..$dtcs) {
+            push @fmt, dtcformat($dtcs[$i-1]);
         }
-        print $pid[$i]->{name};
-        print ' ('.$pid[$i]->{units}.')' if (defined $pid[$i]->{units});
-        print ': ';
-        my $cmd = cmd(sprintf('02%02X00',$i));
-        my $bytes = bytes($cmd, 2);
-        if (length($bytes) != $pid[$i]->{length}) {
-            say "Error: $cmd";
-        } else {
-            say $pid[$i]->{format}($bytes);
+        say '"DTCs",'. quote(join(',',@fmt));
+
+        $list = bytes(cmd('07'), 1);
+        @dtcs = unpack('n*', $list);
+        @fmt = ();
+        for my $dtc (@dtcs) {
+            push @fmt, dtcformat($dtc) if $dtc;
+        }
+        say '"Next DTCs",'. quote(join(',',@fmt));
+    
+        say '';
+        my $ff = cmd('020200');
+        my $dtc = bytes($ff, 2);
+        die "Invalid Freeze Frame Number $ff\n" if (length($dtc) != 2);
+    
+        say '"Freeze Frame",'. quote(dtcformat(unpack('n', $dtc)));
+        for my $i (sort keys %mode2) {
+            next if ($i == 1);   # PID 1 not valid in mode 2
+            lineitem($i, '02%02X00');
         }
     }
+} elsif ($snap) {
+    my %mode1 = map { $_ => 1 } modeinit(1);
+    
+    say '"Supported codes","'.
+         join(', ',
+             map { sprintf('%02X', $_); } sort { $a <=> $b } keys %mode1).
+         '"';
+
+    for my $i (sort keys %mode1) {
+        lineitem($i, '01%02X');
+    }
+} elsif (scalar @watch) {
+    my %mode1 = map { $_ => 1 } modeinit(1);
+
+    my @warn = grep { !$mode1{hex($_)} } @watch;
+    if (scalar @warn) {
+        say '"Unsupported codes",'. join(',',@warn);
+    }
+
+    @watch = map(hex,@watch);
+    @watch = grep { $mode1{$_} } @watch;
+    my @names = map { 
+       my $type = $pid[$_]->{name};
+       $type .= ' ('.$pid[$_]->{units}.')' if (defined $pid[$_]->{units});
+       $type;
+    } @watch;
+    say '"Time",'.join(',', map { quote($_) } @names);
+
+    while (1) {
+        my @val;
+
+        my $time = time();
+        my ($sec, $min, $hour) = localtime($time);
+        $sec += ($time - int($time));
+
+        push @val, sprintf('%02d:%02d:%02.4f',$hour,$min,$sec);
+        for my $i (@watch) {
+            push @val, getval($i, '01%02X');
+        }
+
+        say join(',', map { quote($_) } @val);
+    }
+
+} else {
+    say "Nothing to do.";
 }
