@@ -221,6 +221,20 @@ sub quote {
     return $item;
 }
 
+# CAN-bus has a different long format
+sub canbytes {
+    my $bline = '';
+    for my $line (@_) {
+        my @bytes = split(" +", $line);
+        for my $byte (@bytes) {
+            if ($byte =~ /^[0-9a-fA-F]{2}$/) {
+                $bline .= chr(hex($byte));
+            }
+        }
+    }
+    return $bline;
+}
+
 sub bytes {
     my $in = shift;
     my $trim = shift // 0;
@@ -228,6 +242,11 @@ sub bytes {
 
     my @lines = split("[\r\n]+", $in);
     for my $line (@lines) {
+        if ($line =~ /^[\da-fA-F]{3}$/) {
+            my $bline = canbytes(@lines);
+            $rv .= substr($bline, $trim) if (length($bline) > $trim);
+            return $rv;
+        }
         my @bytes = split(" +", $line);
         my $bline = '';
         for my $byte (@bytes) {
