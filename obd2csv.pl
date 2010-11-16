@@ -263,9 +263,13 @@ sub modeinit {
     my @list;
     my $mode = shift;
     my $tail = shift // '';
+    my $trim = 2;
+    if (length($tail)) {
+        $trim = 3;
+    }
     my $offset = shift // 0;
     my $rv = cmd(sprintf("%02X%02X$tail", $mode, $offset));
-    my $bits = bytes($rv, 2);
+    my $bits = bytes($rv, $trim);
     if (length($bits) != 4) {
         die("Unexpected error during mode $mode init: $rv\n");
     }
@@ -283,9 +287,10 @@ sub getval {
     my $i = shift;
     my $format = shift;
 
+    my $send = sprintf($format,$i);
     my $value;
-    my $cmd = cmd(sprintf($format,$i));
-    my $bytes = bytes($cmd, 2);
+    my $cmd = cmd($send);
+    my $bytes = bytes($cmd, length($send)/2);
     if (length($bytes) != $pid[$i]->{length}) {
         $value = "Error: $cmd";
     } else {
@@ -340,7 +345,7 @@ if ($dtc) {
     
         say '';
         my $ff = cmd('020200');
-        my $dtc = bytes($ff, 2);
+        my $dtc = bytes($ff, 3);
         die "Invalid Freeze Frame Number $ff\n" if (length($dtc) != 2);
     
         say '"Freeze Frame",'. quote(dtcformat(unpack('n', $dtc)));
