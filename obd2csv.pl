@@ -13,6 +13,7 @@ my $baud = 9600;
 my $dtc = '';
 my $snap = '';
 my @watch = ();
+our $error = 0;
 
 GetOptions('baud=i' => \$baud
          , 'dtc'    => \$dtc
@@ -294,6 +295,7 @@ sub getval {
     my $bytes = bytes($cmd, length($send)/2);
     if (length($bytes) != $pid[$i]->{length}) {
         $value = "Error: $cmd";
+        $error++;
     } else {
         $value = $pid[$i]->{format}($bytes);
     }
@@ -386,7 +388,7 @@ if ($dtc) {
     } @watch;
     say '"Time",'.join(',', map { quote($_) } @names);
 
-    while (1) {
+    while (!$error) {
         my @val;
 
         my $time = time();
