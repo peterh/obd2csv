@@ -216,6 +216,7 @@ sub cmd {
 
 sub quote {
     my $item = shift;
+    chomp $item;
     $item =~ s/"/""/g;
     $item = '"'.$item.'"';
     return $item;
@@ -319,7 +320,10 @@ my $ver = cmd('ATI');
 chomp($ver);
 say '"Interface version",'. quote($ver);
 
-say '"VIN",'. quote(bytes(cmd('0902'),3));
+my $vin = bytes(cmd('0902'),3);
+$vin =~ s/\x00//g;    # Trim leading NUL bytes
+$vin = 'Unknown' if ($vin =~ /\xFF/);
+say '"VIN",'. quote($vin);
 
 if ($dtc) {
     my %mode2 = map { $_ => 1 } modeinit(2, '00');
