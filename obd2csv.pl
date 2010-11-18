@@ -82,9 +82,17 @@ sub percent {
     my $a = unpack ('C', shift);
     return sprintf('%.1f',$a * 100/255.0);
 }
+sub absload {
+    my $a = unpack ('n', shift);
+    return sprintf('%.1f',$a * 100/255.0);
+}
 sub degrees {
     my $a = unpack ('C', shift);
     return sprintf('%d',$a - 40);
+}
+sub cattemp {
+    my $a = unpack ('n', shift);
+    return sprintf('%.1f',($a/10.0) - 40);
 }
 sub signedpercent {
     my $a = unpack ('C', shift);
@@ -128,6 +136,20 @@ sub o2 {
     }
     return $rv;
 }
+sub lambdav {
+    my ($a, $b) = unpack ('n2', shift);
+    my $rv;
+    $rv = sprintf('%.4f / ', $a / 32768.0);
+    $rv .= sprintf('%.4f', $b / 8192.0);
+    return $rv;
+}
+sub lambdaa {
+    my ($a, $b) = unpack ('n2', shift);
+    my $rv;
+    $rv = sprintf('%.4f / ', $a / 32768.0);
+    $rv .= sprintf('%.3f', ($b / 256.0) - 128.0);
+    return $rv;
+}
 sub obdstandard {
     my $a = unpack ('C', shift);
     given ($a) {
@@ -150,6 +172,18 @@ sub obdstandard {
 sub msbtimesone {
     my $a = unpack ('n', shift);
     return sprintf('%d',$a);
+}
+sub divthou {
+    my $a = unpack ('n', shift);
+    return sprintf('%.3f',$a / 1000.0);
+}
+sub equivratio {
+    my $a = unpack ('n', shift);
+    return sprintf('%.4f',$a / 32768.0);
+}
+sub vapor {
+    my $a = unpack ('n', shift);
+    return sprintf('%df',$a * 5);
 }
 
 my @pid = (
@@ -185,8 +219,58 @@ my @pid = (
     undef, # 0x1D - O2 present (2)
     undef, # 0x1E - Aux Input Status
     { name => 'Run Time', length => 2, units => 'seconds', format => \&msbtimesone },
-    undef, # 0x20
+    undef, # 0x20 - PID support
     { name => 'MIL Distance', length => 2, units => 'km', format => \&msbtimesone },
+    undef, # 0x22
+    undef, # 0x23
+    { name => 'O2S1 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S2 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S3 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S4 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S5 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S6 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S7 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'O2S8 Lambda', length => 4, units => 'ratio / V', format => \&lambdav },
+    { name => 'Set EGR', length => 1, units => '%', format => \&percent },
+    { name => 'EGR Error', length => 1, units => '%', format => \&signedpercent },
+    { name => 'Evap Purge', length => 1, units => '%', format => \&percent },
+    { name => 'Fuel Level', length => 1, units => '%', format => \&percent },
+    { name => 'Warm-ups Since Code Clear', length => 1, format => \&timesone },
+    { name => 'Distance Since Code Clear', length => 2, units => 'km', format => \&msbtimesone },
+    undef, # 0x32
+    { name => 'Barometric Pressure', length => 1, units => 'kPa', format => \&timesone },
+    { name => 'O2S1 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S2 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S3 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S4 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S5 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S6 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S7 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'O2S8 Lambda', length => 4, units => 'ratio / mA', format => \&lambdaa },
+    { name => 'B1S1 Catalyst Temp', length => 2, units => 'deg C', format => \&cattemp },
+    { name => 'B2S1 Catalyst Temp', length => 2, units => 'deg C', format => \&cattemp },
+    { name => 'B1S2 Catalyst Temp', length => 2, units => 'deg C', format => \&cattemp },
+    { name => 'B2S2 Catalyst Temp', length => 2, units => 'deg C', format => \&cattemp },
+    undef, # 0x40 - PID Support
+    undef, # 0x41 - TODO: status
+    { name => 'Control Module V', length => 2, units => 'V', format => \&divthou },
+    { name => 'Abs Load', length => 2, units => '%', format => \&absload },
+    { name => 'Set Equiv Ratio', length => 2, format => \&equivratio },
+    { name => 'Relative Throttle', length => 1, format => \&percent },
+    { name => 'Ambient Air Temp', length => 1, units => 'deg C', format => \&degrees },
+    { name => 'Throttle B', length => 1, units => '%', format => \&percent },
+    { name => 'Throttle C', length => 1, units => '%', format => \&percent },
+    { name => 'Throttle D', length => 1, units => '%', format => \&percent },
+    { name => 'Throttle E', length => 1, units => '%', format => \&percent },
+    { name => 'Throttle F', length => 1, units => '%', format => \&percent },
+    { name => 'Set Throttle', length => 1, units => '%', format => \&percent },
+    { name => 'Run Time with Code', length => 2, units => 'minutes', format => \&msbtimesone },
+    { name => 'Time Since Code Clear', length => 2, units => 'minutes', format => \&msbtimesone },
+    undef, # 0x4F
+    undef, # 0x50
+    undef, # 0x51
+    undef, # 0x52
+    { name => 'Abs Evap Vapor Pressure', length => 2, units => 'Pa', format => \&vapor },
 );
 
 sub dtcformat {
