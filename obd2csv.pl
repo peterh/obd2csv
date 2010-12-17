@@ -12,6 +12,8 @@ my $port = '/dev/ttyACM0';
 my $baud = 9600;
 my $dtc = '';
 my $snap = '';
+my $cleardtc = '';
+my $really = '';
 my @watch = ();
 our $error = 0;
 
@@ -19,7 +21,9 @@ GetOptions('baud=i' => \$baud
          , 'dtc'    => \$dtc
          , 'port=s' => \$port
          , 'snap'   => \$snap
-         , 'watch=s' => \@watch
+         , 'watch=s'  => \@watch
+         , 'cleardtc' => \$cleardtc
+         , 'really'   => \$really
           );
 @watch = split(/,/,join(',',@watch));
 
@@ -411,7 +415,14 @@ $vin =~ s/\x00//g;    # Trim leading NUL bytes
 $vin = 'Unknown' if ($vin =~ /\xFF/);
 say '"VIN",'. quote($vin);
 
-if ($dtc) {
+if ($cleardtc) {
+    if ($really) {
+	cmd('04');
+	say "DTC cleared.";
+    } else {
+	say "Not clearing DTC. Say --really if you really mean it.";
+    }
+} elsif ($dtc) {
     my %mode2 = map { $_ => 1 } modeinit(2, '00');
     
     my $dtcs = dtccount(bytes(cmd('0101'), 2));
