@@ -1,0 +1,7 @@
+obd2csv
+
+This program connects to an ELM style device to read data from an OBD system.
+Output is in CSV format.
+
+The documentation is the source code. Patches (documentation and otherwise)
+are welcome.
