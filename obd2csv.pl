@@ -18,6 +18,11 @@ use 5.10.0;
 use warnings;
 use strict;
 
+# given/when was retroactively marked "experimental" in 5.18, with
+# plans to remove (or at least drastically change) it in 5.20.
+no 5.20.0;
+no if $] >= 5.018, warnings => "experimental::smartmatch";
+
 use Getopt::Long;
 use Time::HiRes qw( time usleep );
 use Device::SerialPort;
